@@ -86,6 +86,10 @@ Future<void> buildMacOS({
   SizeAnalyzer? sizeAnalyzer,
   bool usingCISystem = false,
 }) async {
+  if (globals.xcodeProjectInterpreter?.isInstalled != true) {
+    throwToolExit(globals.userMessages.xcodeMissing);
+  }
+
   final Directory? xcodeWorkspace = flutterProject.macos.xcodeWorkspace;
   if (xcodeWorkspace == null) {
     throwToolExit(
@@ -117,6 +121,11 @@ Future<void> buildMacOS({
       fileSystem: globals.fs,
       plistParser: globals.plistParser,
       config: globals.config,
+      analytics: globals.analytics,
+      hostPlatform: globals.platform,
+      operatingSystemUtils: globals.os,
+      flutterVersion: globals.flutterVersion,
+      reportCrashes: !await globals.isRunningOnBot
     ),
     SwiftPackageManagerGitignoreMigration(flutterProject, globals.logger),
     MetalAPIValidationMigrator.macos(flutterProject.macos, globals.logger),
@@ -132,6 +141,7 @@ Future<void> buildMacOS({
     fileSystem: globals.fs,
     logger: globals.logger,
     cocoapods: globals.cocoaPods,
+    analytics: globals.analytics,
   );
 
   final String buildDirectoryPath = getMacOSBuildDirectory();
@@ -151,11 +161,14 @@ Future<void> buildMacOS({
     projectFilename: xcodeProjectName,
     buildDirectory: flutterBuildDir,
   );
-  final String? scheme = projectInfo?.schemeFor(buildInfo);
-  if (scheme == null) {
-    projectInfo!.reportFlavorNotFoundAndExit();
+  if (projectInfo == null) {
+    throwToolExit('Unable to get Xcode project information.');
   }
-  final String? configuration = projectInfo?.buildConfigurationFor(buildInfo, scheme);
+  final String? scheme = projectInfo.schemeFor(buildInfo);
+  if (scheme == null) {
+    projectInfo.reportFlavorNotFoundAndExit();
+  }
+  final String? configuration = projectInfo.buildConfigurationFor(buildInfo, scheme);
   if (configuration == null) {
     throwToolExit('Unable to find expected configuration in Xcode project.');
   }
@@ -274,7 +287,7 @@ Future<void> buildMacOS({
         .fetchDependenciesAndGenerateXcodebuildArgs(
           flutterProject.macos,
           globals.fs.directory(buildDirectoryPath),
-          skipPackageUpdatesAndValidation: false,
+          skipPackageValidation: false,
         );
     result = await globals.processUtils.stream(
       <String>[
